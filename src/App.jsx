@@ -121,6 +121,7 @@ export default function ChatApp() {
   const [searchQuery, setSearchQuery] = useState("");
   const [allUsers, setAllUsers] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [unreadCounts, setUnreadCounts] = useState({});
   const [inputText, setInputText] = useState("");
   
   const [replyingTo, setReplyingTo] = useState(null);
@@ -157,7 +158,7 @@ export default function ChatApp() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, aiMessages]);
 
-  // 2 Minutes Inactivity Timer
+  // 2-Minute Inactivity Timer
   useEffect(() => {
     if (!isUnlocked) return;
     const resetIdleTimer = () => {
@@ -207,6 +208,34 @@ export default function ChatApp() {
     });
     return () => unsubUsers();
   }, [currentUser?.username]);
+
+  // Listen for unread counts across all user DMs
+  useEffect(() => {
+    if (!isUnlocked || !currentUser) return;
+    const otherUsersList = allUsers.filter(u => u.username !== currentUser.username);
+    const unsubs = [];
+
+    otherUsersList.forEach(otherUser => {
+      const roomKey = [currentUser.username, otherUser.username].sort().join("_dm_");
+      const q = query(collection(db, "rooms", roomKey, "messages"));
+      
+      const unsubRoom = onSnapshot(q, (snapshot) => {
+        let unread = 0;
+        snapshot.forEach(docSnap => {
+          const data = docSnap.data();
+          if (data.sender !== currentUser.username && !data.isRead) {
+            unread++;
+          }
+        });
+        setUnreadCounts(prev => ({ ...prev, [otherUser.username]: unread }));
+      });
+      unsubs.push(unsubRoom);
+    });
+
+    return () => {
+      unsubs.forEach(unsub => unsub());
+    };
+  }, [isUnlocked, currentUser, allUsers]);
 
   useEffect(() => {
     if (!isUnlocked || !activeChatUser || isAiChat) return;
@@ -647,13 +676,22 @@ export default function ChatApp() {
     u.username.includes(searchQuery.toLowerCase())
   );
 
+  const totalUnreadCount = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
+
   return (
     <div className="flex flex-col h-screen bg-white text-slate-900 font-sans overflow-hidden w-full max-w-sm mx-auto border-x border-slate-200 shadow-2xl">
       
       {currentView === "chats" && (
         <div className="flex flex-col h-full bg-white">
           <div className="px-3.5 pt-3 pb-2 flex items-center justify-between bg-indigo-950 text-white shadow-md">
-            <h1 className="text-xl font-extrabold tracking-tight">Chats</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-extrabold tracking-tight">Chats</h1>
+              {totalUnreadCount > 0 && (
+                <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                  {totalUnreadCount} new
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               {currentUser.isAdmin && (
                 <button 
@@ -729,6 +767,7 @@ export default function ChatApp() {
               filteredChats.map(user => {
                 const isOnline = user.lastSeen && (Date.now() - user.lastSeen < 60000);
                 const lastSeenTime = user.lastSeen ? new Date(user.lastSeen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "";
+                const unreadCount = unreadCounts[user.username] || 0;
 
                 return (
                   <div 
@@ -745,7 +784,14 @@ export default function ChatApp() {
                         <h3 className="font-bold text-xs text-slate-900 truncate">{user.displayName}</h3>
                         <span className="text-[10px] text-slate-400">{isOnline ? "Online" : `Last seen ${lastSeenTime}`}</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 truncate">{user.statusBio || "Available"}</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] text-slate-500 truncate">{user.statusBio || "Available"}</p>
+                        {unreadCount > 0 && (
+                          <span className="bg-emerald-500 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full flex-shrink-0 ml-2">
+                            {unreadCount}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
