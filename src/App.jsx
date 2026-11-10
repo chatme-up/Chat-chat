@@ -18,6 +18,25 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
+// Free Gemini API Integration helper for NAFI AI
+const GEMINI_API_KEY = "AIzaSyBB_8Uq6pCSE8qqju6aknEt2V9uArkmBoc";
+
+async function fetchNafiAIResponse(prompt) {
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }]
+      })
+    });
+    const data = await response.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || "I am NAFI AI! I'm here to answer any questions you have.";
+  } catch (err) {
+    return "Network error connecting to NAFI AI. Please try again.";
+  }
+}
+
 async function hashPassword(password) {
   const enc = new TextEncoder().encode(password);
   const hashBuffer = await window.crypto.subtle.digest("SHA-256", enc);
@@ -84,7 +103,7 @@ export default function ChatApp() {
   const [activeChatUser, setActiveChatUser] = useState(null);
   const [isAiChat, setIsAiChat] = useState(false);
   const [aiMessages, setAiMessages] = useState([
-    { sender: "gemi_ai", type: "text", decryptedText: "Hello! I am Gemi AI. How can I help you today?", timestamp: Date.now() }
+    { sender: "nafi_ai", type: "text", decryptedText: "Hello! I am NAFI AI. Ask me anything!", timestamp: Date.now() }
   ]);
 
   const [passphrase, setPassphrase] = useState("my-secret-key");
@@ -93,14 +112,9 @@ export default function ChatApp() {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState("");
   
-  // Feature 4: Reply Quotes State
   const [replyingTo, setReplyingTo] = useState(null);
-
-  // Feature 3: Typing Indicator States
   const [isTypingRemote, setIsTypingRemote] = useState(false);
   const typingTimeoutRef = useRef(null);
-
-  // Feature 6: Idle Timeout Timer Ref
   const idleTimerRef = useRef(null);
 
   const [showAdminPanel, setShowAdminPanel] = useState(false);
@@ -126,7 +140,6 @@ export default function ChatApp() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, aiMessages]);
 
-  // Feature 6: Idle Timeout (Auto-logout after 15 minutes of inactivity)
   useEffect(() => {
     if (!isUnlocked) return;
     const resetIdleTimer = () => {
@@ -151,7 +164,6 @@ export default function ChatApp() {
     };
   }, [isUnlocked]);
 
-  // Heartbeat for Feature 2 (Online / Last Seen status)
   useEffect(() => {
     if (!isUnlocked || !currentUser) return;
     const userRef = doc(db, "app_users", currentUser.username);
@@ -176,12 +188,10 @@ export default function ChatApp() {
     return () => unsubUsers();
   }, [currentUser?.username]);
 
-  // Feature 1 & 3: Read Receipts & Typing Status Listener
   useEffect(() => {
     if (!isUnlocked || !activeChatUser || isAiChat) return;
     const roomKey = [currentUser.username, activeChatUser.username].sort().join("_dm_");
     
-    // Listen to messages
     const q = query(collection(db, "rooms", roomKey, "messages"), orderBy("timestamp", "asc"));
     const unsubscribeMsgs = onSnapshot(q, async (snapshot) => {
       const loadedMsgs = [];
@@ -197,7 +207,6 @@ export default function ChatApp() {
       setMessages(loadedMsgs);
     });
 
-    // Listen to typing status room meta
     const typingRef = doc(db, "rooms", roomKey, "meta", "typing");
     const unsubscribeTyping = onSnapshot(typingRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -214,7 +223,6 @@ export default function ChatApp() {
     };
   }, [isUnlocked, activeChatUser, isAiChat, passphrase]);
 
-  // Handle Input Typing Trigger
   const handleInputChange = (e) => {
     setInputText(e.target.value);
     if (isAiChat || !activeChatUser) return;
@@ -362,16 +370,8 @@ export default function ChatApp() {
       setAiMessages(prev => [...prev, userMsg]);
       setInputText("");
 
-      setTimeout(() => {
-        const aiReplies = [
-          "That's a great question! I'm Gemi AI, your personal assistant.",
-          "I am running securely alongside your end-to-end encrypted chat app.",
-          "Feel free to ask me anything about coding, accounting, or business ventures!",
-          `I received your message: "${content}". How else can I assist you?`
-        ];
-        const randomReply = aiReplies[Math.floor(Math.random() * aiReplies.length)];
-        setAiMessages(prev => [...prev, { sender: "gemi_ai", type: "text", decryptedText: randomReply, timestamp: Date.now() }]);
-      }, 800);
+      const aiReplyText = await fetchNafiAIResponse(content);
+      setAiMessages(prev => [...prev, { sender: "nafi_ai", type: "text", decryptedText: aiReplyText, timestamp: Date.now() }]);
       return;
     }
 
@@ -486,7 +486,7 @@ export default function ChatApp() {
           <div className="text-center mb-5">
             <div className="text-4xl mb-1">💬</div>
             <h1 className="text-xl font-bold text-slate-900">Secure E2EE Chat</h1>
-            <p className="text-slate-500 text-xs mt-0.5">Professional Messaging with AI</p>
+            <p className="text-slate-500 text-xs mt-0.5">Professional Messaging with NAFI AI</p>
           </div>
 
           <div className="flex bg-slate-100 p-1 rounded-xl mb-5 border border-slate-200">
@@ -678,9 +678,9 @@ export default function ChatApp() {
           </div>
 
           <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
-            {/* Gemi AI Assistant Chat Row */}
+            {/* NAFI AI Assistant Chat Row */}
             <div 
-              onClick={() => openChatWith({ username: "gemi_ai", displayName: "Gemi AI", avatarImage: "https://api.dicebear.com/7.x/bottts/svg?seed=gemi_ai" }, true)}
+              onClick={() => openChatWith({ username: "nafi_ai", displayName: "NAFI AI", avatarImage: "https://api.dicebear.com/7.x/bottts/svg?seed=nafi_ai" }, true)}
               className="flex items-center gap-2.5 px-3.5 py-3 bg-indigo-50/60 hover:bg-indigo-100/60 cursor-pointer transition border-l-4 border-indigo-950"
             >
               <div className="w-10 h-10 rounded-full bg-indigo-950 text-white flex items-center justify-center text-lg flex-shrink-0 shadow-sm">
@@ -689,11 +689,11 @@ export default function ChatApp() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between mb-0.5">
                   <h3 className="font-bold text-xs text-indigo-950 flex items-center gap-1">
-                    Gemi AI Assistant <span className="text-[9px] bg-indigo-950 text-white px-1.5 py-0.2 rounded-full">AI</span>
+                    NAFI AI Assistant <span className="text-[9px] bg-indigo-950 text-white px-1.5 py-0.2 rounded-full">AI</span>
                   </h3>
                   <span className="text-[10px] text-emerald-600 font-medium">● Online</span>
                 </div>
-                <p className="text-[11px] text-slate-600 truncate">Tap to chat with AI and ask questions...</p>
+                <p className="text-[11px] text-slate-600 truncate">Ask NAFI AI anything in real-time...</p>
               </div>
             </div>
 
@@ -746,7 +746,7 @@ export default function ChatApp() {
               <div>
                 <h2 className="font-bold text-xs text-white leading-tight">{activeChatUser.displayName}</h2>
                 <p className="text-[9px] text-slate-300 font-mono">
-                  {isAiChat ? "AI Assistant" : (isTypingRemote ? "typing..." : `@${activeChatUser.username}`)}
+                  {isAiChat ? "Live AI Assistant" : (isTypingRemote ? "typing..." : `@${activeChatUser.username}`)}
                 </p>
               </div>
             </div>
@@ -774,7 +774,6 @@ export default function ChatApp() {
                     onMouseLeave={handleTouchEnd}
                     className={`max-w-[80%] rounded-2xl px-3 py-2 shadow-sm relative select-none cursor-pointer border ${isMe ? 'bg-indigo-950 border-indigo-950 text-white rounded-br-none' : 'bg-white border-slate-200 text-slate-800 rounded-bl-none'}`}
                   >
-                    {/* Reply Quote Snippet Preview */}
                     {msg.replyTo && (
                       <div className={`mb-1.5 p-1.5 rounded-lg text-[10px] border-l-2 ${isMe ? 'bg-white/10 border-white text-slate-200' : 'bg-slate-100 border-indigo-950 text-slate-600'}`}>
                         <p className="font-semibold">@{msg.replyTo.sender}</p>
@@ -821,7 +820,6 @@ export default function ChatApp() {
           </div>
 
           <footer className="bg-white border-t border-slate-200 p-2 shadow-md">
-            {/* Active Reply Banner */}
             {replyingTo && (
               <div className="flex items-center justify-between bg-slate-100 px-3 py-1.5 rounded-xl mb-2 border-l-4 border-indigo-950 text-xs">
                 <div>
@@ -871,7 +869,7 @@ export default function ChatApp() {
                   value={inputText} 
                   onChange={handleInputChange} 
                   onKeyDown={(e) => e.key === 'Enter' && sendMessage("text", inputText)}
-                  placeholder={isAiChat ? "Ask Gemi AI anything..." : "Type a message..."} 
+                  placeholder={isAiChat ? "Ask NAFI AI anything..." : "Type a message..."} 
                   className="flex-1 bg-slate-100 border border-slate-200 rounded-full px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-indigo-950 transition"
                 />
 
