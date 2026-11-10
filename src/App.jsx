@@ -67,6 +67,7 @@ async function decryptData(payload, passphrase) {
 export default function ChatApp() {
   const [authMode, setAuthMode] = useState("login");
   const [isUnlocked, setIsUnlocked] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -78,7 +79,9 @@ export default function ChatApp() {
   const [errorMessage, setErrorMessage] = useState("");
   const [currentUser, setCurrentUser] = useState(null);
 
-  const [room, setRoom] = useState("global");
+  // Navigation state: 'chats' or 'chat_room'
+  const [currentView, setCurrentView] = useState("chats");
+  const [activeChatUser, setActiveChatUser] = useState(null);
   const [passphrase, setPassphrase] = useState("my-secret-key");
   const [searchQuery, setSearchQuery] = useState("");
   const [allUsers, setAllUsers] = useState([]);
@@ -90,9 +93,12 @@ export default function ChatApp() {
   const [newPasswordForUser, setNewPasswordForUser] = useState("");
   const [adminSuccessMsg, setAdminSuccessMsg] = useState("");
 
+  // Voice recording states
   const [isRecording, setIsRecording] = useState(false);
+  const [audioPreviewUrl, setAudioPreviewUrl] = useState(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
+
   const [lightboxImage, setLightboxImage] = useState(null);
   const messagesEndRef = useRef(null);
 
@@ -110,8 +116,9 @@ export default function ChatApp() {
   }, []);
 
   useEffect(() => {
-    if (!isUnlocked) return;
-    const q = query(collection(db, "rooms", room, "messages"), orderBy("timestamp", "asc"));
+    if (!isUnlocked || !activeChatUser) return;
+    const roomKey = [currentUser.username, activeChatUser.username].sort().join("_dm_");
+    const q = query(collection(db, "rooms", roomKey, "messages"), orderBy("timestamp", "asc"));
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       const loadedMsgs = [];
       for (const docSnap of snapshot.docs) {
@@ -122,7 +129,7 @@ export default function ChatApp() {
       setMessages(loadedMsgs);
     });
     return () => unsubscribe();
-  }, [isUnlocked, room, passphrase]);
+  }, [isUnlocked, activeChatUser, passphrase]);
 
   const handleAvatarFileSelect = (e) => {
     const file = e.target.files[0];
@@ -167,7 +174,11 @@ export default function ChatApp() {
 
         await setDoc(userRef, newUserObj);
         setCurrentUser(newUserObj);
-        setIsUnlocked(true);
+        setShowSuccessModal(true);
+        setTimeout(() => {
+          setShowSuccessModal(false);
+          setIsUnlocked(true);
+        }, 1500);
       } else {
         if (!userSnap.exists()) {
           setErrorMessage("⚠️ Username not found. Please click 'Create Account' to sign up.");
@@ -213,17 +224,17 @@ export default function ChatApp() {
     }
   };
 
-  const startDirectChatWithUser = (targetUser) => {
-    const roomKey = [currentUser.username, targetUser.username].sort().join("_dm_");
-    setRoom(roomKey);
-    setSearchQuery("");
+  const openChatWith = (user) => {
+    setActiveChatUser(user);
+    setCurrentView("chat_room");
   };
 
   const sendMessage = async (type = "text", content = inputText) => {
     if (!content.trim() && type === "text") return;
+    const roomKey = [currentUser.username, activeChatUser.username].sort().join("_dm_");
     const ciphertext = await encryptData(content, passphrase);
 
-    await addDoc(collection(db, "rooms", room, "messages"), {
+    await addDoc(collection(db, "rooms", roomKey, "messages"), {
       sender: currentUser.username,
       senderDisplayName: currentUser.displayName,
       type,
@@ -233,10 +244,12 @@ export default function ChatApp() {
     });
 
     if (type === "text") setInputText("");
+    if (type === "audio") setAudioPreviewUrl(null);
   };
 
   const deleteForEveryone = async (msgId) => {
-    await deleteDoc(doc(db, "rooms", room, "messages", msgId));
+    const roomKey = [currentUser.username, activeChatUser.username].sort().join("_dm_");
+    await deleteDoc(doc(db, "rooms", roomKey, "messages", msgId));
   };
 
   const deleteForMe = (msgId) => {
@@ -250,6 +263,7 @@ export default function ChatApp() {
   };
 
   const startRecording = async () => {
+    setAudioPreviewUrl(null);
     audioChunksRef.current = [];
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -261,7 +275,7 @@ export default function ChatApp() {
         const audioBlobObj = new Blob(audioChunksRef.current, { type: mimeType });
         const reader = new FileReader();
         reader.readAsDataURL(audioBlobObj);
-        reader.onloadend = async () => sendMessage("audio", reader.result);
+        reader.onloadend = () => setAudioPreviewUrl(reader.result);
       };
       
       mediaRecorderRef.current.start();
@@ -279,18 +293,31 @@ export default function ChatApp() {
     }
   };
 
-  const handleImageUpload = (e) => {
+  const handleFileUpload = (e, type = "image") => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onloadend = async () => sendMessage("image", reader.result);
+    reader.onloadend = async () => {
+      sendMessage(type, reader.result);
+    };
     reader.readAsDataURL(file);
   };
 
   if (!isUnlocked) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-200 via-slate-100 to-zinc-300 flex items-center justify-center p-4 font-sans text-slate-800">
-        <div className="bg-white border border-slate-300 p-8 rounded-3xl shadow-xl w-full max-w-md">
+        <div className="bg-white border border-slate-300 p-8 rounded-3xl shadow-xl w-full max-w-md relative overflow-hidden">
+          
+          {showSuccessModal && (
+            <div className="absolute inset-0 bg-white/95 backdrop-blur-md z-50 flex flex-col items-center justify-center text-center p-6">
+              <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-4xl mb-4 shadow-md animate-bounce">
+                ✓
+              </div>
+              <h2 className="text-2xl font-bold text-slate-900 mb-1">Account Created!</h2>
+              <p className="text-sm text-slate-500">Welcome to Secure Chat. Logging you in...</p>
+            </div>
+          )}
+
           <div className="text-center mb-6">
             <div className="text-5xl mb-2">💬</div>
             <h1 className="text-2xl font-bold text-slate-800">Secure E2EE Chat</h1>
@@ -345,7 +372,7 @@ export default function ChatApp() {
                 <button 
                   type="button" 
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-800 text-sm font-medium"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-800 text-xs font-semibold"
                 >
                   {showPassword ? "Hide" : "Show"}
                 </button>
@@ -368,7 +395,7 @@ export default function ChatApp() {
                     <button 
                       type="button" 
                       onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-800 text-sm font-medium"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-800 text-xs font-semibold"
                     >
                       {showConfirmPassword ? "Hide" : "Show"}
                     </button>
@@ -412,191 +439,214 @@ export default function ChatApp() {
     );
   }
 
-  const filteredUsers = allUsers.filter(u => 
-    u.username !== currentUser.username && 
-    (u.displayName.toLowerCase().includes(searchQuery.toLowerCase()) || u.username.includes(searchQuery.toLowerCase()))
+  const otherUsers = allUsers.filter(u => u.username !== currentUser.username);
+  const filteredChats = otherUsers.filter(u => 
+    u.displayName.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    u.username.includes(searchQuery.toLowerCase())
   );
 
   return (
-    <div className="flex flex-col h-screen bg-slate-100 text-slate-900 font-sans overflow-hidden">
-      {/* Header */}
-      <header className="bg-white border-b border-slate-200 px-4 py-3 flex flex-col gap-3 shadow-sm z-10">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <img 
-              src={currentUser.avatarImage} 
-              alt="My avatar" 
-              className="w-10 h-10 rounded-xl object-cover border border-slate-300" 
-            />
-            <div>
-              <h2 className="font-bold text-base text-slate-900 flex items-center gap-2">
-                {currentUser.displayName} 
-                {currentUser.isAdmin && <span className="text-[10px] bg-slate-200 text-slate-800 px-2 py-0.5 rounded-full font-bold">ADMIN</span>}
-              </h2>
-              <p className="text-xs text-slate-500 font-mono">Chat Room: {room}</p>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            {currentUser.isAdmin && (
-              <button 
-                onClick={() => setShowAdminPanel(true)} 
-                className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-semibold shadow-sm transition"
-              >
-                ⚙️ Admin
-              </button>
-            )}
-            <button 
-              onClick={() => setIsUnlocked(false)} 
-              className="text-xs px-3 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 font-medium transition"
-            >
-              Logout
-            </button>
-          </div>
-        </div>
-
-        {/* Global User Search Bar */}
-        <div className="relative">
-          <div className="flex items-center gap-2 bg-slate-100 border border-slate-300 rounded-xl px-3 py-1.5">
-            <span className="text-sm text-slate-400">🔍</span>
-            <input 
-              type="text" 
-              value={searchQuery} 
-              onChange={(e) => setSearchQuery(e.target.value)} 
-              placeholder="Search registered users by username..." 
-              className="bg-transparent text-xs w-full focus:outline-none text-slate-900 placeholder-slate-400"
-            />
-            {searchQuery && (
-              <button onClick={() => setSearchQuery("")} className="text-xs text-slate-400 hover:text-slate-600">✕</button>
-            )}
-          </div>
-
-          {/* Search Dropdown Results */}
-          {searchQuery && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-300 rounded-xl shadow-xl z-50 max-h-48 overflow-y-auto">
-              {filteredUsers.length === 0 ? (
-                <div className="p-3 text-xs text-slate-400 text-center">No registered users found</div>
-              ) : (
-                filteredUsers.map(u => (
-                  <div 
-                    key={u.username} 
-                    onClick={() => startDirectChatWithUser(u)}
-                    className="flex items-center justify-between p-2.5 hover:bg-slate-100 cursor-pointer border-b border-slate-100 last:border-none"
-                  >
-                    <div className="flex items-center gap-2">
-                      <img src={u.avatarImage} alt="" className="w-7 h-7 rounded-lg object-cover" />
-                      <div>
-                        <p className="text-xs font-semibold text-slate-900">{u.displayName}</p>
-                        <p className="text-[10px] text-slate-500 font-mono">@{u.username}</p>
-                      </div>
-                    </div>
-                    <span className="text-xs text-slate-700 font-medium">Message 💬</span>
-                  </div>
-                ))
+    <div className="flex flex-col h-screen bg-white text-slate-900 font-sans overflow-hidden max-w-md mx-auto border-x border-slate-200 shadow-xl">
+      
+      {currentView === "chats" && (
+        <div className="flex flex-col h-full bg-white">
+          <div className="px-4 pt-4 pb-2 flex items-center justify-between">
+            <h1 className="text-3xl font-extrabold text-slate-900">Chats</h1>
+            <div className="flex items-center gap-3">
+              {currentUser.isAdmin && (
+                <button 
+                  onClick={() => setShowAdminPanel(true)} 
+                  className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-900 text-white font-semibold shadow-sm"
+                >
+                  ⚙️ Admin
+                </button>
               )}
+              <button onClick={() => setIsUnlocked(false)} className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200">
+                <img src={currentUser.avatarImage} alt="" className="w-full h-full rounded-full object-cover" />
+              </button>
             </div>
-          )}
+          </div>
+
+          <div className="px-4 py-2">
+            <div className="flex items-center gap-2 bg-slate-100 rounded-xl px-3 py-2 border border-slate-200">
+              <span className="text-slate-400">🔍</span>
+              <input 
+                type="text" 
+                value={searchQuery} 
+                onChange={(e) => setSearchQuery(e.target.value)} 
+                placeholder="Search chats or users..." 
+                className="bg-transparent text-xs w-full focus:outline-none text-slate-900 placeholder-slate-400"
+              />
+            </div>
+          </div>
+
+          <div className="px-4 py-2 flex items-center gap-2 overflow-x-auto">
+            <span className="px-3 py-1 bg-emerald-600 text-white text-xs font-semibold rounded-full shadow-sm">All</span>
+            <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-full">Unread</span>
+            <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-full">Favorites</span>
+          </div>
+
+          <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+            {filteredChats.length === 0 ? (
+              <div className="text-center py-20 text-slate-400 text-sm">
+                No other registered users yet.<br/>Ask your friends to sign up!
+              </div>
+            ) : (
+              filteredChats.map(user => (
+                <div 
+                  key={user.username} 
+                  onClick={() => openChatWith(user)}
+                  className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer transition"
+                >
+                  <img src={user.avatarImage} alt="" className="w-13 h-13 rounded-full object-cover border border-slate-200 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <h3 className="font-bold text-sm text-slate-900 truncate">{user.displayName}</h3>
+                      <span className="text-[11px] text-slate-400">Online</span>
+                    </div>
+                    <p className="text-xs text-slate-500 truncate">Tap to open secure chat...</p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
-      </header>
+      )}
 
-      {/* Message Feed */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gradient-to-b from-slate-100 via-zinc-100 to-slate-200">
-        {messages.map((msg) => {
-          const isMe = msg.sender === currentUser.username;
-
-          return (
-            <div key={msg.id} className={`flex items-end gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
-              <div className={`max-w-[75%] rounded-2xl px-4 py-3 shadow-sm relative group border ${isMe ? 'bg-slate-900 border-slate-900 text-white rounded-br-none' : 'bg-white border-slate-200 text-slate-800 rounded-bl-none'}`}>
-                
-                <div className={`flex items-center justify-between gap-4 mb-1 text-[11px] ${isMe ? 'text-slate-300' : 'text-slate-400'}`}>
-                  <span className="font-semibold">@{msg.sender}</span>
-                  <span className="font-mono">{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                </div>
-
-                {msg.type === 'text' && (
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.decryptedText}</p>
-                )}
-                {msg.type === 'image' && (
-                  <img 
-                    src={msg.decryptedText} 
-                    alt="Shared media" 
-                    onClick={() => setLightboxImage(msg.decryptedText)}
-                    className="rounded-xl max-h-60 w-full object-cover cursor-pointer hover:opacity-95 transition mt-1 border border-slate-200" 
-                  />
-                )}
-                {msg.type === 'audio' && (
-                  <audio controls src={msg.decryptedText} className="mt-1 h-9 w-52 accent-slate-700"></audio>
-                )}
-
-                {/* Delete Menu */}
-                <div className={`absolute top-2 ${isMe ? 'left-2' : 'right-2'} opacity-0 group-hover:opacity-100 transition flex items-center gap-1 bg-slate-800 text-white backdrop-blur-md px-2 py-1 rounded-lg text-[10px]`}>
-                  {isMe && (
-                    <button onClick={() => deleteForEveryone(msg.id)} className="text-rose-300 hover:text-rose-200 font-medium">
-                      Delete Everyone
-                    </button>
-                  )}
-                  <button onClick={() => deleteForMe(msg.id)} className="text-slate-200 hover:text-white font-medium">
-                    Delete Me
-                  </button>
-                </div>
+      {currentView === "chat_room" && activeChatUser && (
+        <div className="flex flex-col h-full bg-slate-100">
+          <header className="bg-white border-b border-slate-200 px-3 py-2.5 flex items-center justify-between shadow-sm z-10">
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => setCurrentView("chats")} 
+                className="text-slate-600 font-bold text-lg hover:text-slate-900 px-1"
+              >
+                ←
+              </button>
+              <img src={activeChatUser.avatarImage} alt="" className="w-10 h-10 rounded-full object-cover border border-slate-200" />
+              <div>
+                <h2 className="font-bold text-sm text-slate-900">{activeChatUser.displayName}</h2>
+                <p className="text-[10px] text-slate-500 font-mono">@{activeChatUser.username}</p>
               </div>
             </div>
-          );
-        })}
-        <div ref={messagesEndRef} />
-      </div>
 
-      {/* Input Footer */}
-      <footer className="bg-white border-t border-slate-200 p-3 shadow-md">
-        <div className="flex items-center gap-2 max-w-4xl mx-auto">
-          <label className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 cursor-pointer transition text-slate-700">
-            📷
-            <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-          </label>
+            <div className="flex items-center gap-3 text-slate-600">
+              <button onClick={() => alert("Voice call connecting...")} title="Voice Call" className="p-2 hover:bg-slate-100 rounded-full">📞</button>
+              <button onClick={() => alert("Video call connecting...")} title="Video Call" className="p-2 hover:bg-slate-100 rounded-full">📹</button>
+            </div>
+          </header>
 
-          <button 
-            type="button" 
-            onMouseDown={startRecording} 
-            onMouseUp={stopRecording} 
-            onTouchStart={startRecording} 
-            onTouchEnd={stopRecording} 
-            className={`p-2.5 rounded-xl border transition ${isRecording ? 'bg-rose-500 text-white border-rose-600 animate-pulse' : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'}`}
-            title="Hold to record voice note"
-          >
-            🎙️
-          </button>
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gradient-to-b from-slate-100 via-zinc-100 to-slate-200">
+            {messages.map((msg) => {
+              const isMe = msg.sender === currentUser.username;
+              if (msg.deletedFor?.includes(currentUser.username)) return null;
 
-          <input 
-            type="text" 
-            value={inputText} 
-            onChange={(e) => setInputText(e.target.value)} 
-            onKeyDown={(e) => e.key === 'Enter' && sendMessage("text", inputText)}
-            placeholder="Type encrypted message..." 
-            className="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-slate-500 transition"
-          />
+              return (
+                <div key={msg.id} className={`flex items-end gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                  <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 shadow-sm relative group border ${isMe ? 'bg-slate-900 border-slate-900 text-white rounded-br-none' : 'bg-white border-slate-200 text-slate-800 rounded-bl-none'}`}>
+                    
+                    <div className={`flex items-center justify-between gap-4 mb-1 text-[10px] ${isMe ? 'text-slate-300' : 'text-slate-400'}`}>
+                      <span className="font-semibold">@{msg.sender}</span>
+                      <span className="font-mono">{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
 
-          <button 
-            onClick={() => sendMessage("text", inputText)} 
-            className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl shadow-md transition text-sm"
-          >
-            Send
-          </button>
+                    {msg.type === 'text' && (
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.decryptedText}</p>
+                    )}
+                    {msg.type === 'image' && (
+                      <img 
+                        src={msg.decryptedText} 
+                        alt="Shared media" 
+                        onClick={() => setLightboxImage(msg.decryptedText)}
+                        className="rounded-xl max-h-60 w-full object-cover cursor-pointer hover:opacity-95 transition mt-1 border border-slate-200" 
+                      />
+                    )}
+                    {msg.type === 'file' && (
+                      <a href={msg.decryptedText} download="shared-file" className="flex items-center gap-2 underline text-xs mt-1">
+                        📁 Download Attached File
+                      </a>
+                    )}
+                    {msg.type === 'audio' && (
+                      <audio controls src={msg.decryptedText} className="mt-1 h-9 w-48 accent-slate-700"></audio>
+                    )}
+
+                    <div className={`absolute top-2 ${isMe ? 'left-2' : 'right-2'} opacity-0 group-hover:opacity-100 transition flex items-center gap-1 bg-slate-800 text-white backdrop-blur-md px-2 py-1 rounded-lg text-[10px]`}>
+                      {isMe && (
+                        <button onClick={() => deleteForEveryone(msg.id)} className="text-rose-300 hover:text-rose-200 font-medium">
+                          Delete Everyone
+                        </button>
+                      )}
+                      <button onClick={() => deleteForMe(msg.id)} className="text-slate-200 hover:text-white font-medium">
+                        Delete Me
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={messagesEndRef} />
+          </div>
+
+          <footer className="bg-white border-t border-slate-200 p-3 shadow-md">
+            {audioPreviewUrl ? (
+              <div className="flex items-center gap-3 bg-slate-50 p-2.5 rounded-2xl border border-slate-300">
+                <button onClick={() => setAudioPreviewUrl(null)} className="p-2 rounded-xl bg-rose-100 text-rose-600 text-xs font-semibold">Discard</button>
+                <audio controls src={audioPreviewUrl} className="flex-1 h-9 accent-slate-700"></audio>
+                <button onClick={() => sendMessage("audio", audioPreviewUrl)} className="px-4 py-2 bg-slate-900 text-white text-xs font-semibold rounded-xl">Send</button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <label className="p-2.5 rounded-full bg-slate-100 hover:bg-slate-200 cursor-pointer text-slate-700 transition" title="Upload Image">
+                  📷
+                  <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, "image")} className="hidden" />
+                </label>
+
+                <label className="p-2.5 rounded-full bg-slate-100 hover:bg-slate-200 cursor-pointer text-slate-700 transition" title="Upload File">
+                  📎
+                  <input type="file" onChange={(e) => handleFileUpload(e, "file")} className="hidden" />
+                </label>
+
+                <button 
+                  type="button" 
+                  onMouseDown={startRecording} 
+                  onMouseUp={stopRecording} 
+                  onTouchStart={startRecording} 
+                  onTouchEnd={stopRecording} 
+                  className={`p-2.5 rounded-full border transition ${isRecording ? 'bg-rose-500 text-white border-rose-600 animate-pulse' : 'bg-slate-100 text-slate-700 border-slate-200'}`}
+                  title="Hold to record voice note"
+                >
+                  🎙️
+                </button>
+
+                <input 
+                  type="text" 
+                  value={inputText} 
+                  onChange={(e) => setInputText(e.target.value)} 
+                  onKeyDown={(e) => e.key === 'Enter' && sendMessage("text", inputText)}
+                  placeholder="Type a message..." 
+                  className="flex-1 bg-slate-100 border border-slate-200 rounded-full px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-slate-400 transition"
+                />
+
+                <button 
+                  onClick={() => sendMessage("text", inputText)} 
+                  className="p-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-full shadow-md transition"
+                >
+                  ➤
+                </button>
+              </div>
+            )}
+          </footer>
         </div>
-      </footer>
+      )}
 
-      {/* Admin Password Reset Modal */}
       {showAdminPanel && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-200">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-200">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-lg text-slate-900">⚙️ Admin Control Panel</h3>
+              <h3 className="font-bold text-base text-slate-900">⚙️ Admin Control Panel</h3>
               <button onClick={() => setShowAdminPanel(false)} className="text-slate-400 hover:text-slate-600">✕</button>
             </div>
             
-            <p className="text-xs text-slate-500 mb-4">
-              As an Admin, you can assist users who forgot their credentials by resetting their password below.
-            </p>
-
             {adminSuccessMsg && (
               <div className="mb-4 p-3 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs text-center font-medium">
                 {adminSuccessMsg}
@@ -611,7 +661,7 @@ export default function ChatApp() {
                   value={resetTargetUser} 
                   onChange={(e) => setResetTargetUser(e.target.value)} 
                   placeholder="e.g. tijani" 
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs"
                   required 
                 />
               </div>
@@ -623,14 +673,14 @@ export default function ChatApp() {
                   value={newPasswordForUser} 
                   onChange={(e) => setNewPasswordForUser(e.target.value)} 
                   placeholder="Enter new password..." 
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs"
                   required 
                 />
               </div>
 
               <button 
                 type="submit" 
-                className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl text-sm transition"
+                className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl text-xs transition"
               >
                 Reset User Password
               </button>
@@ -639,7 +689,6 @@ export default function ChatApp() {
         </div>
       )}
 
-      {/* Lightbox Modal */}
       {lightboxImage && (
         <div onClick={() => setLightboxImage(null)} className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <img src={lightboxImage} alt="Fullscreen preview" className="max-w-full max-h-full rounded-2xl border border-white/20" />
