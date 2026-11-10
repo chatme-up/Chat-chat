@@ -70,6 +70,10 @@ export default function ChatApp() {
   
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
   const [avatarImage, setAvatarImage] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [currentUser, setCurrentUser] = useState(null);
@@ -141,18 +145,14 @@ export default function ChatApp() {
       const passHash = await hashPassword(password);
 
       if (authMode === "signup") {
-        // If user already exists, check if password matches to log them in automatically, or prompt
+        if (password !== confirmPassword) {
+          setErrorMessage("⚠️ Passwords do not match. Please re-enter.");
+          return;
+        }
+
         if (userSnap.exists()) {
-          const existingData = userSnap.data();
-          if (existingData.passwordHash === passHash) {
-            setCurrentUser(existingData);
-            setAvatarImage(existingData.avatarImage);
-            setIsUnlocked(true);
-            return;
-          } else {
-            setErrorMessage("⚠️ Username already exists. Switch to Login tab or use a different name.");
-            return;
-          }
+          setErrorMessage("⚠️ Username already exists. Please choose another or login.");
+          return;
         }
 
         const isAdmin = allUsers.length === 0 || cleanUser === "admin";
@@ -169,7 +169,6 @@ export default function ChatApp() {
         setCurrentUser(newUserObj);
         setIsUnlocked(true);
       } else {
-        // Login mode
         if (!userSnap.exists()) {
           setErrorMessage("⚠️ Username not found. Please click 'Create Account' to sign up.");
           return;
@@ -334,33 +333,65 @@ export default function ChatApp() {
 
             <div>
               <label className="block text-xs uppercase tracking-wider text-slate-600 font-semibold mb-1">Password</label>
-              <input 
-                type="password" 
-                value={password} 
-                onChange={(e) => setPassword(e.target.value)} 
-                placeholder="Enter password..." 
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 text-slate-900 focus:outline-none focus:border-slate-500 transition"
-                required 
-              />
-            </div>
-            
-            {authMode === "signup" && (
-              <div>
-                <label className="block text-xs uppercase tracking-wider text-slate-600 font-semibold mb-1">Profile Photo</label>
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-2xl bg-slate-100 border border-slate-300 overflow-hidden flex items-center justify-center">
-                    {avatarImage ? (
-                      <img src={avatarImage} alt="Avatar preview" className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-2xl">📷</span>
-                    )}
-                  </div>
-                  <label className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl text-xs font-semibold cursor-pointer text-slate-700 text-center transition">
-                    Upload Photo
-                    <input type="file" accept="image/*" onChange={handleAvatarFileSelect} className="hidden" />
-                  </label>
-                </div>
+              <div className="relative">
+                <input 
+                  type={showPassword ? "text" : "password"} 
+                  value={password} 
+                  onChange={(e) => setPassword(e.target.value)} 
+                  placeholder="Enter password..." 
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 pr-12 text-slate-900 focus:outline-none focus:border-slate-500 transition"
+                  required 
+                />
+                <button 
+                  type="button" 
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-800 text-sm font-medium"
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
               </div>
+            </div>
+
+            {authMode === "signup" && (
+              <>
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-slate-600 font-semibold mb-1">Re-enter Password</label>
+                  <div className="relative">
+                    <input 
+                      type={showConfirmPassword ? "text" : "password"} 
+                      value={confirmPassword} 
+                      onChange={(e) => setConfirmPassword(e.target.value)} 
+                      placeholder="Confirm password..." 
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 pr-12 text-slate-900 focus:outline-none focus:border-slate-500 transition"
+                      required 
+                    />
+                    <button 
+                      type="button" 
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-800 text-sm font-medium"
+                    >
+                      {showConfirmPassword ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-slate-600 font-semibold mb-1">Profile Photo</label>
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-2xl bg-slate-100 border border-slate-300 overflow-hidden flex items-center justify-center">
+                      {avatarImage ? (
+                        <img src={avatarImage} alt="Avatar preview" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-2xl">📷</span>
+                      )}
+                    </div>
+                    <label className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl text-xs font-semibold cursor-pointer text-slate-700 text-center transition">
+                      Upload Photo
+                      <input type="file" accept="image/*" onChange={handleAvatarFileSelect} className="hidden" />
+                    </label>
+                  </div>
+                </div>
+              </>
             )}
 
             <button 
@@ -579,7 +610,7 @@ export default function ChatApp() {
                   type="text" 
                   value={resetTargetUser} 
                   onChange={(e) => setResetTargetUser(e.target.value)} 
-                  placeholder="e.g. username" 
+                  placeholder="e.g. tijani" 
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm"
                   required 
                 />
