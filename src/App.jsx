@@ -18,7 +18,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// Free Gemini API Integration helper for NAFI AI
 const GEMINI_API_KEY = "AIzaSyBB_8Uq6pCSE8qqju6aknEt2V9uArkmBoc";
 
 async function fetchNafiAIResponse(prompt) {
@@ -31,9 +30,16 @@ async function fetchNafiAIResponse(prompt) {
       })
     });
     const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || "I am NAFI AI! I'm here to answer any questions you have.";
+    
+    // Improved parsing for Gemini API response format
+    const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (candidateText) {
+      return candidateText;
+    } else {
+      return "I received your question, but encountered an empty response. Try asking again!";
+    }
   } catch (err) {
-    return "Network error connecting to NAFI AI. Please try again.";
+    return "Network error connecting to NAFI AI. Please check your connection.";
   }
 }
 
