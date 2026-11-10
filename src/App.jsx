@@ -22,14 +22,12 @@ const db = getFirestore(app);
 async function fetchNafiAIResponse(prompt) {
   const q = prompt.toLowerCase().trim();
 
-  // Handle date inquiries
   if (q.includes("date") || q.includes("day") || q.includes("time")) {
     const todayStr = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     return `Today is ${todayStr}, and the current local time is ${timeStr}.`;
   }
 
-  // Handle accounting inquiries
   if (q.includes("trial balance") || q.includes("accounting") || q.includes("balance sheet") || q.includes("debit") || q.includes("credit")) {
     return "A Trial Balance is a bookkeeping worksheet in which the balances of all ledgers are compiled into debit and credit column totals that are equal. If they match, it proves there are no mathematical errors in the double-entry accounting system.";
   }
@@ -38,12 +36,10 @@ async function fetchNafiAIResponse(prompt) {
     return "Under IFRS and professional accounting standards (such as ICAN curricula), Executorship law governs the administration of deceased estates by executors appointed under a will, ensuring assets are gathered, liabilities settled, and remaining properties distributed strictly according to trust terms.";
   }
 
-  // Handle coding / web development inquiries
   if (q.includes("code") || q.includes("react") || q.includes("build") || q.includes("tailwind") || q.includes("javascript")) {
     return "To build a responsive UI component in React with Tailwind CSS, utilize functional components with React hooks (like useState and useEffect) combined with utility classes (such as max-w-sm mx-auto flex items-center justify-between) for clean mobile-first viewports.";
   }
 
-  // General intelligence fallback handling any other question
   return `NAFI AI Analysis regarding "${prompt}": Executing professional inquiry processing. This covers multi-sector analytics, technical troubleshooting, and strategic business consulting optimized for your enterprise workspace.`;
 }
 
@@ -95,7 +91,9 @@ async function decryptData(payload, passphrase) {
 
 export default function ChatApp() {
   const [authMode, setAuthMode] = useState("login");
-  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [isUnlocked, setIsUnlocked] = useState(() => {
+    return !!localStorage.getItem("active_chat_user");
+  });
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   
   const [username, setUsername] = useState("");
@@ -107,7 +105,10 @@ export default function ChatApp() {
   const [avatarImage, setAvatarImage] = useState(null);
   const [statusBio, setStatusBio] = useState("Available");
   const [errorMessage, setErrorMessage] = useState("");
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    const saved = localStorage.getItem("active_chat_user");
+    return saved ? JSON.parse(saved) : null;
+  });
 
   const [currentView, setCurrentView] = useState("chats");
   const [activeChatUser, setActiveChatUser] = useState(null);
@@ -146,19 +147,25 @@ export default function ChatApp() {
   const [lightboxImage, setLightboxImage] = useState(null);
   const messagesEndRef = useRef(null);
 
+  const logoutUser = () => {
+    localStorage.removeItem("active_chat_user");
+    setIsUnlocked(false);
+    setCurrentUser(null);
+  };
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, aiMessages]);
 
+  // 2 Minutes Inactivity Timer
   useEffect(() => {
     if (!isUnlocked) return;
     const resetIdleTimer = () => {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       idleTimerRef.current = setTimeout(() => {
-        setIsUnlocked(false);
-        setCurrentUser(null);
-        alert("Session locked due to 15 minutes of inactivity.");
-      }, 15 * 60 * 1000);
+        logoutUser();
+        alert("Session locked due to 2 minutes of inactivity.");
+      }, 2 * 60 * 1000);
     };
 
     window.addEventListener("mousemove", resetIdleTimer);
@@ -192,7 +199,10 @@ export default function ChatApp() {
       
       if (currentUser) {
         const match = usersList.find(u => u.username === currentUser.username);
-        if (match) setCurrentUser(match);
+        if (match) {
+          setCurrentUser(match);
+          localStorage.setItem("active_chat_user", JSON.stringify(match));
+        }
       }
     });
     return () => unsubUsers();
@@ -264,11 +274,13 @@ export default function ChatApp() {
       if (newStatusBioInput.trim()) updates.statusBio = newStatusBioInput.trim();
 
       await updateDoc(userRef, updates);
-      setCurrentUser(prev => ({ 
-        ...prev, 
-        avatarImage: newProfilePic || prev.avatarImage,
-        statusBio: newStatusBioInput.trim() || prev.statusBio 
-      }));
+      const updatedUser = { 
+        ...currentUser, 
+        avatarImage: newProfilePic || currentUser.avatarImage,
+        statusBio: newStatusBioInput.trim() || currentUser.statusBio 
+      };
+      setCurrentUser(updatedUser);
+      localStorage.setItem("active_chat_user", JSON.stringify(updatedUser));
       setNewProfilePic(null);
       setNewStatusBioInput("");
       setShowProfileModal(false);
@@ -314,6 +326,7 @@ export default function ChatApp() {
 
         await setDoc(userRef, newUserObj);
         setCurrentUser(newUserObj);
+        localStorage.setItem("active_chat_user", JSON.stringify(newUserObj));
         setShowSuccessModal(true);
         setTimeout(() => {
           setShowSuccessModal(false);
@@ -332,6 +345,7 @@ export default function ChatApp() {
         }
 
         setCurrentUser(userData);
+        localStorage.setItem("active_chat_user", JSON.stringify(userData));
         setAvatarImage(userData.avatarImage);
         setStatusBio(userData.statusBio || "Available");
         setIsUnlocked(true);
@@ -478,7 +492,7 @@ export default function ChatApp() {
     reader.readAsDataURL(file);
   };
 
-  if (!isUnlocked) {
+  if (!isUnlocked || !currentUser) {
     return (
       <div className="min-h-screen bg-slate-200 flex items-center justify-center p-3 font-sans text-slate-800">
         <div className="bg-white border border-slate-300 p-6 rounded-3xl shadow-xl w-full max-w-xs relative overflow-hidden">
@@ -660,7 +674,7 @@ export default function ChatApp() {
               </button>
               <button 
                 type="button"
-                onClick={() => setIsUnlocked(false)} 
+                onClick={logoutUser} 
                 className="text-[11px] text-slate-300 hover:text-white px-1"
               >
                 Logout
