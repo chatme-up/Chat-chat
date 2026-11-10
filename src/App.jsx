@@ -137,16 +137,25 @@ export default function ChatApp() {
     const userRef = doc(db, "app_users", cleanUser);
 
     try {
+      const userSnap = await getDoc(userRef);
+      const passHash = await hashPassword(password);
+
       if (authMode === "signup") {
-        const userSnap = await getDoc(userRef);
+        // If user already exists, check if password matches to log them in automatically, or prompt
         if (userSnap.exists()) {
-          setErrorMessage("⚠️ Username already exists. Please choose another or login.");
-          return;
+          const existingData = userSnap.data();
+          if (existingData.passwordHash === passHash) {
+            setCurrentUser(existingData);
+            setAvatarImage(existingData.avatarImage);
+            setIsUnlocked(true);
+            return;
+          } else {
+            setErrorMessage("⚠️ Username already exists. Switch to Login tab or use a different name.");
+            return;
+          }
         }
 
-        const passHash = await hashPassword(password);
         const isAdmin = allUsers.length === 0 || cleanUser === "admin";
-
         const newUserObj = {
           username: cleanUser,
           displayName: username.trim(),
@@ -160,16 +169,14 @@ export default function ChatApp() {
         setCurrentUser(newUserObj);
         setIsUnlocked(true);
       } else {
-        const userSnap = await getDoc(userRef);
+        // Login mode
         if (!userSnap.exists()) {
-          setErrorMessage("⚠️ Username not found. Please sign up or contact Admin.");
+          setErrorMessage("⚠️ Username not found. Please click 'Create Account' to sign up.");
           return;
         }
 
         const userData = userSnap.data();
-        const inputHash = await hashPassword(password);
-
-        if (userData.passwordHash !== inputHash) {
+        if (userData.passwordHash !== passHash) {
           setErrorMessage("❌ Incorrect password. Contact Admin to recover password.");
           return;
         }
@@ -179,7 +186,7 @@ export default function ChatApp() {
         setIsUnlocked(true);
       }
     } catch (err) {
-      setErrorMessage("Authentication error. Please try again.");
+      setErrorMessage("Authentication error. Please check your connection.");
     }
   };
 
@@ -572,7 +579,7 @@ export default function ChatApp() {
                   type="text" 
                   value={resetTargetUser} 
                   onChange={(e) => setResetTargetUser(e.target.value)} 
-                  placeholder="e.g. tijani" 
+                  placeholder="e.g. username" 
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm"
                   required 
                 />
