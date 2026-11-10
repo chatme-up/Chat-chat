@@ -79,7 +79,6 @@ export default function ChatApp() {
   const [errorMessage, setErrorMessage] = useState("");
   const [currentUser, setCurrentUser] = useState(null);
 
-  // Navigation state: 'chats' or 'chat_room'
   const [currentView, setCurrentView] = useState("chats");
   const [activeChatUser, setActiveChatUser] = useState(null);
   const [passphrase, setPassphrase] = useState("my-secret-key");
@@ -93,7 +92,6 @@ export default function ChatApp() {
   const [newPasswordForUser, setNewPasswordForUser] = useState("");
   const [adminSuccessMsg, setAdminSuccessMsg] = useState("");
 
-  // Voice recording states
   const [isRecording, setIsRecording] = useState(false);
   const [audioPreviewUrl, setAudioPreviewUrl] = useState(null);
   const mediaRecorderRef = useRef(null);
@@ -326,12 +324,14 @@ export default function ChatApp() {
 
           <div className="flex bg-slate-100 p-1 rounded-xl mb-6 border border-slate-200">
             <button 
+              type="button"
               onClick={() => { setAuthMode("login"); setErrorMessage(""); }}
               className={`flex-1 py-2 text-xs font-bold rounded-lg transition ${authMode === "login" ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
             >
               Login
             </button>
             <button 
+              type="button"
               onClick={() => { setAuthMode("signup"); setErrorMessage(""); }}
               className={`flex-1 py-2 text-xs font-bold rounded-lg transition ${authMode === "signup" ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
             >
@@ -405,7 +405,7 @@ export default function ChatApp() {
                 <div>
                   <label className="block text-xs uppercase tracking-wider text-slate-600 font-semibold mb-1">Profile Photo</label>
                   <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 rounded-2xl bg-slate-100 border border-slate-300 overflow-hidden flex items-center justify-center">
+                    <div className="w-16 h-16 rounded-2xl bg-slate-100 border border-slate-300 overflow-hidden flex items-center justify-center flex-shrink-0">
                       {avatarImage ? (
                         <img src={avatarImage} alt="Avatar preview" className="w-full h-full object-cover" />
                       ) : (
@@ -455,14 +455,19 @@ export default function ChatApp() {
             <div className="flex items-center gap-3">
               {currentUser.isAdmin && (
                 <button 
+                  type="button"
                   onClick={() => setShowAdminPanel(true)} 
                   className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-900 text-white font-semibold shadow-sm"
                 >
                   ⚙️ Admin
                 </button>
               )}
-              <button onClick={() => setIsUnlocked(false)} className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200">
-                <img src={currentUser.avatarImage} alt="" className="w-full h-full rounded-full object-cover" />
+              <button 
+                type="button"
+                onClick={() => setIsUnlocked(false)} 
+                className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200 overflow-hidden border border-slate-200 flex-shrink-0"
+              >
+                <img src={currentUser.avatarImage} alt="" className="w-full h-full object-cover" />
               </button>
             </div>
           </div>
@@ -498,7 +503,8 @@ export default function ChatApp() {
                   onClick={() => openChatWith(user)}
                   className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer transition"
                 >
-                  <img src={user.avatarImage} alt="" className="w-13 h-13 rounded-full object-cover border border-slate-200 flex-shrink-0" />
+                  {/* Fixed small circular size: w-12 h-12 */}
+                  <img src={user.avatarImage} alt="" className="w-12 h-12 rounded-full object-cover border border-slate-200 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-0.5">
                       <h3 className="font-bold text-sm text-slate-900 truncate">{user.displayName}</h3>
@@ -518,12 +524,14 @@ export default function ChatApp() {
           <header className="bg-white border-b border-slate-200 px-3 py-2.5 flex items-center justify-between shadow-sm z-10">
             <div className="flex items-center gap-3">
               <button 
+                type="button"
                 onClick={() => setCurrentView("chats")} 
                 className="text-slate-600 font-bold text-lg hover:text-slate-900 px-1"
               >
                 ←
               </button>
-              <img src={activeChatUser.avatarImage} alt="" className="w-10 h-10 rounded-full object-cover border border-slate-200" />
+              {/* Fixed small circular size: w-10 h-10 */}
+              <img src={activeChatUser.avatarImage} alt="" className="w-10 h-10 rounded-full object-cover border border-slate-200 flex-shrink-0" />
               <div>
                 <h2 className="font-bold text-sm text-slate-900">{activeChatUser.displayName}</h2>
                 <p className="text-[10px] text-slate-500 font-mono">@{activeChatUser.username}</p>
@@ -531,8 +539,8 @@ export default function ChatApp() {
             </div>
 
             <div className="flex items-center gap-3 text-slate-600">
-              <button onClick={() => alert("Voice call connecting...")} title="Voice Call" className="p-2 hover:bg-slate-100 rounded-full">📞</button>
-              <button onClick={() => alert("Video call connecting...")} title="Video Call" className="p-2 hover:bg-slate-100 rounded-full">📹</button>
+              <button type="button" onClick={() => alert("Voice call connecting...")} title="Voice Call" className="p-2 hover:bg-slate-100 rounded-full">📞</button>
+              <button type="button" onClick={() => alert("Video call connecting...")} title="Video Call" className="p-2 hover:bg-slate-100 rounded-full">📹</button>
             </div>
           </header>
 
@@ -572,11 +580,11 @@ export default function ChatApp() {
 
                     <div className={`absolute top-2 ${isMe ? 'left-2' : 'right-2'} opacity-0 group-hover:opacity-100 transition flex items-center gap-1 bg-slate-800 text-white backdrop-blur-md px-2 py-1 rounded-lg text-[10px]`}>
                       {isMe && (
-                        <button onClick={() => deleteForEveryone(msg.id)} className="text-rose-300 hover:text-rose-200 font-medium">
+                        <button type="button" onClick={() => deleteForEveryone(msg.id)} className="text-rose-300 hover:text-rose-200 font-medium">
                           Delete Everyone
                         </button>
                       )}
-                      <button onClick={() => deleteForMe(msg.id)} className="text-slate-200 hover:text-white font-medium">
+                      <button type="button" onClick={() => deleteForMe(msg.id)} className="text-slate-200 hover:text-white font-medium">
                         Delete Me
                       </button>
                     </div>
@@ -590,9 +598,9 @@ export default function ChatApp() {
           <footer className="bg-white border-t border-slate-200 p-3 shadow-md">
             {audioPreviewUrl ? (
               <div className="flex items-center gap-3 bg-slate-50 p-2.5 rounded-2xl border border-slate-300">
-                <button onClick={() => setAudioPreviewUrl(null)} className="p-2 rounded-xl bg-rose-100 text-rose-600 text-xs font-semibold">Discard</button>
+                <button type="button" onClick={() => setAudioPreviewUrl(null)} className="p-2 rounded-xl bg-rose-100 text-rose-600 text-xs font-semibold">Discard</button>
                 <audio controls src={audioPreviewUrl} className="flex-1 h-9 accent-slate-700"></audio>
-                <button onClick={() => sendMessage("audio", audioPreviewUrl)} className="px-4 py-2 bg-slate-900 text-white text-xs font-semibold rounded-xl">Send</button>
+                <button type="button" onClick={() => sendMessage("audio", audioPreviewUrl)} className="px-4 py-2 bg-slate-900 text-white text-xs font-semibold rounded-xl">Send</button>
               </div>
             ) : (
               <div className="flex items-center gap-2">
@@ -628,6 +636,7 @@ export default function ChatApp() {
                 />
 
                 <button 
+                  type="button"
                   onClick={() => sendMessage("text", inputText)} 
                   className="p-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-full shadow-md transition"
                 >
@@ -644,7 +653,7 @@ export default function ChatApp() {
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-200">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-base text-slate-900">⚙️ Admin Control Panel</h3>
-              <button onClick={() => setShowAdminPanel(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+              <button type="button" onClick={() => setShowAdminPanel(false)} className="text-slate-400 hover:text-slate-600">✕</button>
             </div>
             
             {adminSuccessMsg && (
